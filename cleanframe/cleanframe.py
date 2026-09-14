@@ -19,7 +19,6 @@ SUPPORTED_EXTENSIONS = {
 
 
 # ─── Remoção de metadata ────────────────────────────────────────
-
 def remove_image_metadata(input_path, output_path):
     """Remove EXIF/metadata de imagens usando Pillow."""
     img = Image.open(input_path)
@@ -67,7 +66,6 @@ def process_file(input_path, output_dir):
 
 
 # ─── Interface Tkinter ──────────────────────────────────────────
-
 class MetadataRemoverApp:
     def __init__(self, root):
         self.root = root
@@ -209,7 +207,6 @@ class MetadataRemoverApp:
 
 
 # ─── Main ───────────────────────────────────────────────────────
-
 if __name__ == '__main__':
     root = tk.Tk()
     app = MetadataRemoverApp(root)
