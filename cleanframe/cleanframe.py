@@ -8,7 +8,7 @@ import os
 import re
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
-from PIL import Image
+from PIL import Image, ImageOps
 
 # ─── Configuração ───────────────────────────────────────────────
 SUPPORTED_EXTENSIONS = {
@@ -19,21 +19,38 @@ SUPPORTED_EXTENSIONS = {
 
 
 # ─── Remoção de metadata ────────────────────────────────────────
+
 def remove_image_metadata(input_path, output_path):
     """Remove EXIF/metadata de imagens usando Pillow."""
-    img = Image.open(input_path)
-    data = list(img.get_flattened_data())
-    clean = Image.new(img.mode, img.size)
-    clean.putdata(data)
-    if img.mode in ('RGBA', 'LA', 'PA'):
-        clean.putalpha(img.getchannel('A'))
-    elif img.mode == 'P' and 'transparency' in img.info:
-        img = img.convert('RGBA')
-        clean = Image.new('RGBA', img.size)
-        clean.putdata(list(img.getdata()))
-    clean.save(output_path)
-    img.close()
-    clean.close()
+    with Image.open(input_path) as img:
+        # 1. Aplicar orientação EXIF antes de remover o metadata
+        img = ImageOps.exif_transpose(img)
+
+        fmt = img.format or "JPEG"
+
+        # 2. Criar imagem limpa sem metadata
+        if img.mode in ('P', 'PA'):
+            # Imagens de paleta: preservar a paleta
+            clean = Image.new(img.mode, img.size)
+            palette = img.getpalette()
+            if palette:
+                rawmode = 'RGBA' if img.mode == 'PA' else 'RGB'
+                clean.putpalette(palette, rawmode)
+            clean.putdata(list(img.getdata()))
+            # Preservar transparência se existir
+            if 'transparency' in img.info:
+                clean.info['transparency'] = img.info['transparency']
+        else:
+            clean = Image.new(img.mode, img.size)
+            clean.putdata(list(img.getdata()))
+
+        # 3. Salvar preservando qualidade e perfil ICC
+        save_kwargs = {"format": fmt}
+        if fmt == "JPEG":
+            save_kwargs["quality"] = 95
+
+        clean.save(output_path, **save_kwargs)
+        clean.close()
     return output_path
 
 
@@ -44,6 +61,7 @@ def remove_svg_metadata(input_path, output_path):
 
     content = re.sub(r'<!--.*?-->', '', content, flags=re.DOTALL)
     content = re.sub(r'<metadata[^>]*>.*?</metadata>', '', content, flags=re.DOTALL)
+    content = re.sub(r'<desc[^>]*>.*?</desc>', '', content, flags=re.DOTALL)
     content = re.sub(r'\s+(?:dc|dcterms|xmp|xmpmm|pdf|photoshop|crs):[\w:]+="[^"]*"', '', content)
     content = re.sub(r'\s+(?:creator|author|title|description|keywords)="[^"]*"', '', content)
 
@@ -66,6 +84,7 @@ def process_file(input_path, output_dir):
 
 
 # ─── Interface Tkinter ──────────────────────────────────────────
+
 class MetadataRemoverApp:
     def __init__(self, root):
         self.root = root
@@ -186,6 +205,7 @@ class MetadataRemoverApp:
 
         for i, f in enumerate(self.files):
             self.progress.configure(value=(i / total) * 100)
+            self.root.update_idletasks()  # manter UI responsiva
             self.log(f"→ Processando: {os.path.basename(f)}")
             try:
                 out = process_file(f, self.output_dir)
@@ -207,6 +227,7 @@ class MetadataRemoverApp:
 
 
 # ─── Main ───────────────────────────────────────────────────────
+
 if __name__ == '__main__':
     root = tk.Tk()
     app = MetadataRemoverApp(root)
